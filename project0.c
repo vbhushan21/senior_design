@@ -29,6 +29,11 @@
 #include "driverlib/sysctl.h"
 #include "driverlib/gpio.h"
 #include "driverlib/i2c.h"
+#include "driverlib/uart.h"
+#include "driverlib/pin_map.h"
+#include "driverlib/interrupt.h"
+#include "inc/hw_ints.h"
+
 
 //*****************************************************************************
 //
@@ -66,6 +71,9 @@ __error__(char *pcFilename, uint32_t ui32Line)
 // Main 'C' Language entry point.  Toggle an LED using TivaWare.
 //
 //*****************************************************************************
+
+void I2CInit(void);
+void I2Croutine(void);
 int
 main(void)
 {
@@ -75,44 +83,9 @@ main(void)
     SysCtlClockSet(SYSCTL_SYSDIV_4|SYSCTL_USE_PLL|SYSCTL_XTAL_16MHZ|
                     SYSCTL_OSC_MAIN);
 
-    //
-    // Enable and wait for the port to be ready for access
-    //
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOG);
-    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOG))
-    {
-    }
+		I2CInit();
+		I2Croutine();
     
-    //
-    // Configure the GPIO port for the LED operation.
-    //
-    GPIOPinTypeGPIOOutput(GPIO_PORTG_BASE, USER_LED);
-
-    //
-    // Loop Forever
-    //
-    while(1)
-    {
-        //
-        // Turn on the LED
-        //
-        GPIOPinWrite(GPIO_PORTG_BASE, USER_LED, USER_LED);
-
-        //
-        // Delay for a bit
-        //
-        SysCtlDelay(2000000);
-
-        //
-        // Turn on the LED
-        //
-        GPIOPinWrite(GPIO_PORTG_BASE, USER_LED, ~(USER_LED));
-
-        //
-        // Delay for a bit
-        //
-        SysCtlDelay(2000000);
-    }
 }
 void I2CInit(void){
 	//PB2 I2C0SCL
@@ -212,4 +185,55 @@ while ((readValue & 0x01) == 0x01)
 		}
 		readValue |= I2CMasterDataGet(I2C0_BASE);
 		//16-bit value in cm
+		//UART0_OutUDec(readValue);
+}
+
+
+
+//------------UART_OutChar------------
+// Output 8-bit to serial port
+// Input: letter is an 8-bit ASCII character to be transferred
+// Output: none
+void UART0_OutChar(char data){
+	UARTCharPut(UART0_BASE, data);
+}
+//-----------------------UART_OutUDec-----------------------
+// Output a 32-bit number in unsigned decimal format
+// Input: 32-bit number to be transferred
+// Output: none
+// Variable format 1-10 digits with no space before or after
+void UART0_OutUDec(uint32_t n){
+// This function uses recursion to convert decimal number
+//   of unspecified length as an ASCII string
+  if(n >= 10){
+    UART0_OutUDec( n/10);
+    n = n%10;
+  }
+  UART0_OutChar(n+'0'); /* n is between 0 and 9 */
+}
+
+void UARTinit(void) 
+{
+	/***  UART0 Setup   *****************************************************************/
+	//Enable GPIOA 
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+	SysCtlDelay(3);
+
+	//Configure GPIOA pins for UART0
+	GPIOPinConfigure(GPIO_PA0_U0RX);
+	GPIOPinConfigure(GPIO_PA1_U0TX);
+	GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+
+	//Enable UART0
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
+	SysCtlDelay(3);
+
+	//Configure UART0 Baud Rate 115200
+	UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 115200,
+					(UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
+					
+	IntEnable(INT_UART0); //Enable interrupt UART0
+	IntPrioritySet(INT_UART0, 0x20); //Give priority 1
+	UARTFIFOLevelSet(UART0_BASE, UART_FIFO_TX1_8, UART_FIFO_RX1_8);
+	UARTIntEnable(UART0_BASE, UART_INT_RX | UART_INT_RT);
 }
